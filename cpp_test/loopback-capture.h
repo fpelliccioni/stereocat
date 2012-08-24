@@ -1,13 +1,15 @@
 #ifndef LOOPBACK_CAPTURE_HPP__
 #define LOOPBACK_CAPTURE_HPP__
 
-//#ifndef prefs_HPP__
-//#define prefs_HPP__
+#include <cstdint>
 
 #include <audioclient.h>
 #include <avrt.h>
 
-HRESULT WriteWaveHeader(HMMIO hFile, LPCWAVEFORMATEX pwfx, MMCKINFO *pckRIFF, MMCKINFO *pckData) 
+#include "generic_guard.hpp"
+
+
+HRESULT WriteWaveHeader(HMMIO file_handle_, LPCWAVEFORMATEX pwfx, MMCKINFO *pckRIFF, MMCKINFO *pckData) 
 {
 	MMRESULT result;
 
@@ -15,7 +17,7 @@ HRESULT WriteWaveHeader(HMMIO hFile, LPCWAVEFORMATEX pwfx, MMCKINFO *pckRIFF, MM
 	pckRIFF->ckid = MAKEFOURCC('R', 'I', 'F', 'F');
 	pckRIFF->fccType = MAKEFOURCC('W', 'A', 'V', 'E');
 
-	result = mmioCreateChunk(hFile, pckRIFF, MMIO_CREATERIFF);
+	result = mmioCreateChunk(file_handle_, pckRIFF, MMIO_CREATERIFF);
 	if (MMSYSERR_NOERROR != result) 
 	{
 		printf("mmioCreateChunk(\"RIFF/WAVE\") failed: MMRESULT = 0x%08x\n", result);
@@ -25,7 +27,7 @@ HRESULT WriteWaveHeader(HMMIO hFile, LPCWAVEFORMATEX pwfx, MMCKINFO *pckRIFF, MM
 	// make a 'fmt ' chunk (within the RIFF/WAVE chunk)
 	MMCKINFO chunk;
 	chunk.ckid = MAKEFOURCC('f', 'm', 't', ' ');
-	result = mmioCreateChunk(hFile, &chunk, 0);
+	result = mmioCreateChunk(file_handle_, &chunk, 0);
 	if (MMSYSERR_NOERROR != result)
 	{
 		printf("mmioCreateChunk(\"fmt \") failed: MMRESULT = 0x%08x\n", result);
@@ -36,7 +38,7 @@ HRESULT WriteWaveHeader(HMMIO hFile, LPCWAVEFORMATEX pwfx, MMCKINFO *pckRIFF, MM
 	LONG lBytesInWfx = sizeof(WAVEFORMATEX) + pwfx->cbSize;
 	LONG lBytesWritten =
 		mmioWrite(
-		hFile,
+		file_handle_,
 		reinterpret_cast<PCHAR>(const_cast<LPWAVEFORMATEX>(pwfx)),
 		lBytesInWfx
 		);
@@ -47,7 +49,7 @@ HRESULT WriteWaveHeader(HMMIO hFile, LPCWAVEFORMATEX pwfx, MMCKINFO *pckRIFF, MM
 	}
 
 	// ascend from the 'fmt ' chunk
-	result = mmioAscend(hFile, &chunk, 0);
+	result = mmioAscend(file_handle_, &chunk, 0);
 	if (MMSYSERR_NOERROR != result)
 	{
 		printf("mmioAscend(\"fmt \" failed: MMRESULT = 0x%08x\n", result);
@@ -56,7 +58,7 @@ HRESULT WriteWaveHeader(HMMIO hFile, LPCWAVEFORMATEX pwfx, MMCKINFO *pckRIFF, MM
 
 	// make a 'fact' chunk whose data is (DWORD)0
 	chunk.ckid = MAKEFOURCC('f', 'a', 'c', 't');
-	result = mmioCreateChunk(hFile, &chunk, 0);
+	result = mmioCreateChunk(file_handle_, &chunk, 0);
 	if (MMSYSERR_NOERROR != result) 
 	{
 		printf("mmioCreateChunk(\"fmt \") failed: MMRESULT = 0x%08x\n", result);
@@ -66,7 +68,7 @@ HRESULT WriteWaveHeader(HMMIO hFile, LPCWAVEFORMATEX pwfx, MMCKINFO *pckRIFF, MM
 	// write (DWORD)0 to it
 	// this is cleaned up later
 	DWORD frames = 0;
-	lBytesWritten = mmioWrite(hFile, reinterpret_cast<PCHAR>(&frames), sizeof(frames));
+	lBytesWritten = mmioWrite(file_handle_, reinterpret_cast<PCHAR>(&frames), sizeof(frames));
 	if (lBytesWritten != sizeof(frames))
 	{
 		printf("mmioWrite(fact data) wrote %u bytes; expected %u bytes\n", lBytesWritten, (UINT32)sizeof(frames));
@@ -74,7 +76,7 @@ HRESULT WriteWaveHeader(HMMIO hFile, LPCWAVEFORMATEX pwfx, MMCKINFO *pckRIFF, MM
 	}
 
 	// ascend from the 'fact' chunk
-	result = mmioAscend(hFile, &chunk, 0);
+	result = mmioAscend(file_handle_, &chunk, 0);
 	if (MMSYSERR_NOERROR != result) 
 	{
 		printf("mmioAscend(\"fact\" failed: MMRESULT = 0x%08x\n", result);
@@ -83,7 +85,7 @@ HRESULT WriteWaveHeader(HMMIO hFile, LPCWAVEFORMATEX pwfx, MMCKINFO *pckRIFF, MM
 
 	// make a 'data' chunk and leave the data pointer there
 	pckData->ckid = MAKEFOURCC('d', 'a', 't', 'a');
-	result = mmioCreateChunk(hFile, pckData, 0);
+	result = mmioCreateChunk(file_handle_, pckData, 0);
 	if (MMSYSERR_NOERROR != result) 
 	{
 		printf("mmioCreateChunk(\"data\") failed: MMRESULT = 0x%08x\n", result);
@@ -93,18 +95,18 @@ HRESULT WriteWaveHeader(HMMIO hFile, LPCWAVEFORMATEX pwfx, MMCKINFO *pckRIFF, MM
 	return S_OK;
 }
 
-HRESULT FinishWaveFile(HMMIO hFile, MMCKINFO *pckRIFF, MMCKINFO *pckData) 
+HRESULT FinishWaveFile(HMMIO file_handle_, MMCKINFO *pckRIFF, MMCKINFO *pckData) 
 {
 	MMRESULT result;
 
-	result = mmioAscend(hFile, pckData, 0);
+	result = mmioAscend(file_handle_, pckData, 0);
 	if (MMSYSERR_NOERROR != result) 
 	{
 		printf("mmioAscend(\"data\" failed: MMRESULT = 0x%08x\n", result);
 		return E_FAIL;
 	}
 
-	result = mmioAscend(hFile, pckRIFF, 0);
+	result = mmioAscend(file_handle_, pckRIFF, 0);
 	if (MMSYSERR_NOERROR != result) 
 	{
 		printf("mmioAscend(\"RIFF/WAVE\" failed: MMRESULT = 0x%08x\n", result);
@@ -123,400 +125,403 @@ HRESULT FinishWaveFile(HMMIO hFile, MMCKINFO *pckRIFF, MMCKINFO *pckData)
 // until the stop event is set
 // any failures will be propagated back via hr
 
-struct LoopbackCaptureThreadFunctionArguments {
-	IMMDevice *pMMDevice;
-	bool bInt16;
-	HMMIO hFile;
-	HANDLE hStartedEvent;
-	HANDLE hStopEvent;
-	UINT32 nFrames;
-	HRESULT hr;
-};
+//struct LoopbackCaptureThreadFunctionArguments {
+//	IMMDevice *mm_device_;
+//	bool bInt16;
+//	HMMIO file_handle_;
+//	HANDLE hStartedEvent;
+//	HANDLE hStopEvent;
+//	UINT32 nFrames;
+//	HRESULT hr;
+//};
 
-DWORD WINAPI LoopbackCaptureThreadFunction(LPVOID pContext);
-
-
-HRESULT LoopbackCapture(
-    IMMDevice *pMMDevice,
-    HMMIO hFile,
-    bool bInt16,
-    HANDLE hStartedEvent,
-    HANDLE hStopEvent,
-    PUINT32 pnFrames
-) 
-{
-    HRESULT hr;
-
-    // activate an IAudioClient
-    IAudioClient *pAudioClient;
-    hr = pMMDevice->Activate(
-        __uuidof(IAudioClient),
-        CLSCTX_ALL, NULL,
-        (void**)&pAudioClient
-    );
-
-    if (FAILED(hr)) 
-	{
-        printf("IMMDevice::Activate(IAudioClient) failed: hr = 0x%08x", hr);
-        return hr;
-    }
-    
-    // get the default device periodicity
-    REFERENCE_TIME hnsDefaultDevicePeriod;
-    hr = pAudioClient->GetDevicePeriod(&hnsDefaultDevicePeriod, NULL);
-    if (FAILED(hr)) 
-	{
-        printf("IAudioClient::GetDevicePeriod failed: hr = 0x%08x\n", hr);
-        pAudioClient->Release();
-        return hr;
-    }
-
-    // get the default device format
-    WAVEFORMATEX *pwfx;
-    hr = pAudioClient->GetMixFormat(&pwfx);
-    if (FAILED(hr)) 
-	{
-        printf("IAudioClient::GetMixFormat failed: hr = 0x%08x\n", hr);
-        CoTaskMemFree(pwfx);
-        pAudioClient->Release();
-        return hr;
-    }
-
-    if (bInt16)
-	{
-        // coerce int-16 wave format
-        // can do this in-place since we're not changing the size of the format
-        // also, the engine will auto-convert from float to int for us
-        switch (pwfx->wFormatTag) 
-		{
-            case WAVE_FORMAT_IEEE_FLOAT:
-                pwfx->wFormatTag = WAVE_FORMAT_PCM;
-                pwfx->wBitsPerSample = 16;
-                pwfx->nBlockAlign = pwfx->nChannels * pwfx->wBitsPerSample / 8;
-                pwfx->nAvgBytesPerSec = pwfx->nBlockAlign * pwfx->nSamplesPerSec;
-                break;
-
-            case WAVE_FORMAT_EXTENSIBLE:
-                {
-                    // naked scope for case-local variable
-                    PWAVEFORMATEXTENSIBLE pEx = reinterpret_cast<PWAVEFORMATEXTENSIBLE>(pwfx);
-                    if (IsEqualGUID(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, pEx->SubFormat)) 
-					{
-                        pEx->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
-                        pEx->Samples.wValidBitsPerSample = 16;
-                        pwfx->wBitsPerSample = 16;
-                        pwfx->nBlockAlign = pwfx->nChannels * pwfx->wBitsPerSample / 8;
-                        pwfx->nAvgBytesPerSec = pwfx->nBlockAlign * pwfx->nSamplesPerSec;
-                    } 
-					else 
-					{
-                        printf("Don't know how to coerce mix format to int-16\n");
-                        CoTaskMemFree(pwfx);
-                        pAudioClient->Release();
-                        return E_UNEXPECTED;
-                    }
-                }
-                break;
-
-            default:
-                printf("Don't know how to coerce WAVEFORMATEX with wFormatTag = 0x%08x to int-16\n", pwfx->wFormatTag);
-                CoTaskMemFree(pwfx);
-                pAudioClient->Release();
-                return E_UNEXPECTED;
-        }
-    }
-
-    MMCKINFO ckRIFF = {0};
-    MMCKINFO ckData = {0};
-    hr = WriteWaveHeader(hFile, pwfx, &ckRIFF, &ckData);
-    if (FAILED(hr)) 
-	{
-        // WriteWaveHeader does its own logging
-        CoTaskMemFree(pwfx);
-        pAudioClient->Release();
-        return hr;
-    }
-
-    // create a periodic waitable timer
-    HANDLE hWakeUp = CreateWaitableTimer(NULL, FALSE, NULL);
-    if (NULL == hWakeUp) 
-	{
-        DWORD dwErr = GetLastError();
-        printf("CreateWaitableTimer failed: last error = %u\n", dwErr);
-        CoTaskMemFree(pwfx);
-        pAudioClient->Release();
-        return HRESULT_FROM_WIN32(dwErr);
-    }
-
-    UINT32 nBlockAlign = pwfx->nBlockAlign;
-    *pnFrames = 0;
-    
-    // call IAudioClient::Initialize
-    // note that AUDCLNT_STREAMFLAGS_LOOPBACK and AUDCLNT_STREAMFLAGS_EVENTCALLBACK
-    // do not work together...
-    // the "data ready" event never gets set
-    // so we're going to do a timer-driven loop
-    hr = pAudioClient->Initialize(
-        AUDCLNT_SHAREMODE_SHARED,
-        AUDCLNT_STREAMFLAGS_LOOPBACK,
-        0, 0, pwfx, 0
-    );
-    if (FAILED(hr)) 
-	{
-        printf("IAudioClient::Initialize failed: hr = 0x%08x\n", hr);
-        CloseHandle(hWakeUp);
-        pAudioClient->Release();
-        return hr;
-    }
-    CoTaskMemFree(pwfx);
-
-    // activate an IAudioCaptureClient
-    IAudioCaptureClient *pAudioCaptureClient;
-    hr = pAudioClient->GetService(
-        __uuidof(IAudioCaptureClient),
-        (void**)&pAudioCaptureClient
-    );
-    if (FAILED(hr)) 
-	{
-        printf("IAudioClient::GetService(IAudioCaptureClient) failed: hr 0x%08x\n", hr);
-        CloseHandle(hWakeUp);
-        pAudioClient->Release();
-        return hr;
-    }
-    
-    // register with MMCSS
-    DWORD nTaskIndex = 0;
-    HANDLE hTask = AvSetMmThreadCharacteristics(L"Capture", &nTaskIndex);
-    if (NULL == hTask) 
-	{
-        DWORD dwErr = GetLastError();
-        printf("AvSetMmThreadCharacteristics failed: last error = %u\n", dwErr);
-        pAudioCaptureClient->Release();
-        CloseHandle(hWakeUp);
-        pAudioClient->Release();
-        return HRESULT_FROM_WIN32(dwErr);
-    }    
-
-    // set the waitable timer
-    LARGE_INTEGER liFirstFire;
-    liFirstFire.QuadPart = -hnsDefaultDevicePeriod / 2; // negative means relative time
-    LONG lTimeBetweenFires = (LONG)hnsDefaultDevicePeriod / 2 / (10 * 1000); // convert to milliseconds
-    BOOL bOK = SetWaitableTimer(
-        hWakeUp,
-        &liFirstFire,
-        lTimeBetweenFires,
-        NULL, NULL, FALSE
-    );
-    if (!bOK) 
-	{
-        DWORD dwErr = GetLastError();
-        printf("SetWaitableTimer failed: last error = %u\n", dwErr);
-        AvRevertMmThreadCharacteristics(hTask);
-        pAudioCaptureClient->Release();
-        CloseHandle(hWakeUp);
-        pAudioClient->Release();
-        return HRESULT_FROM_WIN32(dwErr);
-    }
-    
-    // call IAudioClient::Start
-    hr = pAudioClient->Start();
-    if (FAILED(hr))
-	{
-        printf("IAudioClient::Start failed: hr = 0x%08x\n", hr);
-        AvRevertMmThreadCharacteristics(hTask);
-        pAudioCaptureClient->Release();
-        CloseHandle(hWakeUp);
-        pAudioClient->Release();
-        return hr;
-    }
-    SetEvent(hStartedEvent);
-    
-    // loopback capture loop
-    HANDLE waitArray[2] = { hStopEvent, hWakeUp };
-    DWORD dwWaitResult;
-
-    bool bDone = false;
-    bool bFirstPacket = true;
-    for (UINT32 nPasses = 0; !bDone; nPasses++) 
-	{
-        dwWaitResult = WaitForMultipleObjects(
-            ARRAYSIZE(waitArray), waitArray,
-            FALSE, INFINITE
-        );
-
-        if (WAIT_OBJECT_0 == dwWaitResult) 
-		{
-            printf("Received stop event after %u passes and %u frames\n", nPasses, *pnFrames);
-            bDone = true;
-            continue; // exits loop
-        }
-
-        if (WAIT_OBJECT_0 + 1 != dwWaitResult)
-		{
-            printf("Unexpected WaitForMultipleObjects return value %u on pass %u after %u frames\n", dwWaitResult, nPasses, *pnFrames);
-            pAudioClient->Stop();
-            CancelWaitableTimer(hWakeUp);
-            AvRevertMmThreadCharacteristics(hTask);
-            pAudioCaptureClient->Release();
-            CloseHandle(hWakeUp);
-            pAudioClient->Release();
-            return E_UNEXPECTED;
-        }
-
-        // got a "wake up" event - see if there's data
-        UINT32 nNextPacketSize;
-        hr = pAudioCaptureClient->GetNextPacketSize(&nNextPacketSize);
-        if (FAILED(hr)) 
-		{
-            printf("IAudioCaptureClient::GetNextPacketSize failed on pass %u after %u frames: hr = 0x%08x\n", nPasses, *pnFrames, hr);
-            pAudioClient->Stop();
-            CancelWaitableTimer(hWakeUp);
-            AvRevertMmThreadCharacteristics(hTask);
-            pAudioCaptureClient->Release();
-            CloseHandle(hWakeUp);
-            pAudioClient->Release();            
-            return hr;
-        }
-
-        if (0 == nNextPacketSize) 
-		{
-            // no data yet
-            continue;
-        }
-
-        // get the captured data
-        BYTE *pData;
-        UINT32 nNumFramesToRead;
-        DWORD dwFlags;
-
-        hr = pAudioCaptureClient->GetBuffer(
-            &pData,
-            &nNumFramesToRead,
-            &dwFlags,
-            NULL,
-            NULL
-        );
-        if (FAILED(hr)) 
-		{
-            printf("IAudioCaptureClient::GetBuffer failed on pass %u after %u frames: hr = 0x%08x\n", nPasses, *pnFrames, hr);
-            pAudioClient->Stop();
-            CancelWaitableTimer(hWakeUp);
-            AvRevertMmThreadCharacteristics(hTask);
-            pAudioCaptureClient->Release();
-            CloseHandle(hWakeUp);
-            pAudioClient->Release();            
-            return hr;            
-        }
-
-		//if (bFirstPacket && AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY == dwFlags) 
-        if (AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY == dwFlags) 
-		{
-            printf("Probably spurious glitch reported on first packet\n");
-        } 
-		else if (0 != dwFlags) 
-		{
-            printf("IAudioCaptureClient::GetBuffer set flags to 0x%08x on pass %u after %u frames\n", dwFlags, nPasses, *pnFrames);
-            pAudioClient->Stop();
-            CancelWaitableTimer(hWakeUp);
-            AvRevertMmThreadCharacteristics(hTask);
-            pAudioCaptureClient->Release();
-            CloseHandle(hWakeUp);
-            pAudioClient->Release();            
-            return E_UNEXPECTED;
-        }
-
-        if (0 == nNumFramesToRead) 
-		{
-            printf("IAudioCaptureClient::GetBuffer said to read 0 frames on pass %u after %u frames\n", nPasses, *pnFrames);
-            pAudioClient->Stop();
-            CancelWaitableTimer(hWakeUp);
-            AvRevertMmThreadCharacteristics(hTask);
-            pAudioCaptureClient->Release();
-            CloseHandle(hWakeUp);
-            pAudioClient->Release();            
-            return E_UNEXPECTED;            
-        }
-
-        LONG lBytesToWrite = nNumFramesToRead * nBlockAlign;
-#pragma prefast(suppress: __WARNING_INCORRECT_ANNOTATION, "IAudioCaptureClient::GetBuffer SAL annotation implies a 1-byte buffer")
-        LONG lBytesWritten = mmioWrite(hFile, reinterpret_cast<PCHAR>(pData), lBytesToWrite);
-        if (lBytesToWrite != lBytesWritten) 
-		{
-            printf("mmioWrite wrote %u bytes on pass %u after %u frames: expected %u bytes\n", lBytesWritten, nPasses, *pnFrames, lBytesToWrite);
-            pAudioClient->Stop();
-            CancelWaitableTimer(hWakeUp);
-            AvRevertMmThreadCharacteristics(hTask);
-            pAudioCaptureClient->Release();
-            CloseHandle(hWakeUp);
-            pAudioClient->Release();            
-            return E_UNEXPECTED;
-        }
-        *pnFrames += nNumFramesToRead;
-        
-        hr = pAudioCaptureClient->ReleaseBuffer(nNumFramesToRead);
-        if (FAILED(hr)) 
-		{
-            printf("IAudioCaptureClient::ReleaseBuffer failed on pass %u after %u frames: hr = 0x%08x\n", nPasses, *pnFrames, hr);
-            pAudioClient->Stop();
-            CancelWaitableTimer(hWakeUp);
-            AvRevertMmThreadCharacteristics(hTask);
-            pAudioCaptureClient->Release();
-            CloseHandle(hWakeUp);
-            pAudioClient->Release();            
-            return hr;            
-        }
-        
-        bFirstPacket = false;
-    } // capture loop
-
-    hr = FinishWaveFile(hFile, &ckData, &ckRIFF);
-    if (FAILED(hr)) 
-	{
-        // FinishWaveFile does it's own logging
-        pAudioClient->Stop();
-        CancelWaitableTimer(hWakeUp);
-        AvRevertMmThreadCharacteristics(hTask);
-        pAudioCaptureClient->Release();
-        CloseHandle(hWakeUp);
-        pAudioClient->Release();
-        return hr;
-    }
-    
-    pAudioClient->Stop();
-    CancelWaitableTimer(hWakeUp);
-    AvRevertMmThreadCharacteristics(hTask);
-    pAudioCaptureClient->Release();
-    CloseHandle(hWakeUp);
-    pAudioClient->Release();
-
-    return hr;
-}
+//DWORD WINAPI LoopbackCaptureThreadFunction(LPVOID pContext);
 
 
-
-DWORD WINAPI LoopbackCaptureThreadFunction(LPVOID pContext) 
-{
-    LoopbackCaptureThreadFunctionArguments *pArgs = (LoopbackCaptureThreadFunctionArguments*)pContext;
-
-    pArgs->hr = CoInitialize(NULL);
-    if (FAILED(pArgs->hr)) 
-	{
-        printf("CoInitialize failed: hr = 0x%08x\n", pArgs->hr);
-        return 0;
-    }
-
-    pArgs->hr = LoopbackCapture(
-        pArgs->pMMDevice,
-        pArgs->hFile,
-        pArgs->bInt16,
-        pArgs->hStartedEvent,
-        pArgs->hStopEvent,
-        &pArgs->nFrames
-    );
-
-    CoUninitialize();
-    return 0;
-}
+//HRESULT LoopbackCapture(
+//    IMMDevice *mm_device_,
+//    HMMIO file_handle_,
+//    bool bInt16,
+//    HANDLE hStartedEvent,
+//    HANDLE hStopEvent,
+//    PUINT32 pnFrames
+//) 
+//{
+//    HRESULT hr;
+//
+//    // activate an IAudioClient
+//    IAudioClient *pAudioClient;
+//    hr = mm_device_->Activate(
+//        __uuidof(IAudioClient),
+//        CLSCTX_ALL, NULL,
+//        (void**)&pAudioClient
+//    );
+//
+//    if (FAILED(hr)) 
+//	{
+//        printf("IMMDevice::Activate(IAudioClient) failed: hr = 0x%08x", hr);
+//        return hr;
+//    }
+//    
+//    // get the default device periodicity
+//    REFERENCE_TIME hnsDefaultDevicePeriod;
+//    hr = pAudioClient->GetDevicePeriod(&hnsDefaultDevicePeriod, NULL);
+//    if (FAILED(hr)) 
+//	{
+//        printf("IAudioClient::GetDevicePeriod failed: hr = 0x%08x\n", hr);
+//        pAudioClient->Release();
+//        return hr;
+//    }
+//
+//    // get the default device format
+//    WAVEFORMATEX *pwfx;
+//    hr = pAudioClient->GetMixFormat(&pwfx);
+//    if (FAILED(hr)) 
+//	{
+//        printf("IAudioClient::GetMixFormat failed: hr = 0x%08x\n", hr);
+//        CoTaskMemFree(pwfx);
+//        pAudioClient->Release();
+//        return hr;
+//    }
+//
+//    if (bInt16)
+//	{
+//        // coerce int-16 wave format
+//        // can do this in-place since we're not changing the size of the format
+//        // also, the engine will auto-convert from float to int for us
+//        switch (pwfx->wFormatTag) 
+//		{
+//            case WAVE_FORMAT_IEEE_FLOAT:
+//                pwfx->wFormatTag = WAVE_FORMAT_PCM;
+//                pwfx->wBitsPerSample = 16;
+//                pwfx->nBlockAlign = pwfx->nChannels * pwfx->wBitsPerSample / 8;
+//                pwfx->nAvgBytesPerSec = pwfx->nBlockAlign * pwfx->nSamplesPerSec;
+//                break;
+//
+//            case WAVE_FORMAT_EXTENSIBLE:
+//                {
+//                    // naked scope for case-local variable
+//                    PWAVEFORMATEXTENSIBLE pEx = reinterpret_cast<PWAVEFORMATEXTENSIBLE>(pwfx);
+//                    if (IsEqualGUID(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, pEx->SubFormat)) 
+//					{
+//                        pEx->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+//                        pEx->Samples.wValidBitsPerSample = 16;
+//                        pwfx->wBitsPerSample = 16;
+//                        pwfx->nBlockAlign = pwfx->nChannels * pwfx->wBitsPerSample / 8;
+//                        pwfx->nAvgBytesPerSec = pwfx->nBlockAlign * pwfx->nSamplesPerSec;
+//                    } 
+//					else 
+//					{
+//                        printf("Don't know how to coerce mix format to int-16\n");
+//                        CoTaskMemFree(pwfx);
+//                        pAudioClient->Release();
+//                        return E_UNEXPECTED;
+//                    }
+//                }
+//                break;
+//
+//            default:
+//                printf("Don't know how to coerce WAVEFORMATEX with wFormatTag = 0x%08x to int-16\n", pwfx->wFormatTag);
+//                CoTaskMemFree(pwfx);
+//                pAudioClient->Release();
+//                return E_UNEXPECTED;
+//        }
+//    }
+//
+//    MMCKINFO ckRIFF = {0};
+//    MMCKINFO ckData = {0};
+//    hr = WriteWaveHeader(file_handle_, pwfx, &ckRIFF, &ckData);
+//    if (FAILED(hr)) 
+//	{
+//        // WriteWaveHeader does its own logging
+//        CoTaskMemFree(pwfx);
+//        pAudioClient->Release();
+//        return hr;
+//    }
+//
+//    // create a periodic waitable timer
+//    HANDLE hWakeUp = CreateWaitableTimer(NULL, FALSE, NULL);
+//    if (NULL == hWakeUp) 
+//	{
+//        DWORD dwErr = GetLastError();
+//        printf("CreateWaitableTimer failed: last error = %u\n", dwErr);
+//        CoTaskMemFree(pwfx);
+//        pAudioClient->Release();
+//        return HRESULT_FROM_WIN32(dwErr);
+//    }
+//
+//    UINT32 nBlockAlign = pwfx->nBlockAlign;
+//    *pnFrames = 0;
+//    
+//    // call IAudioClient::Initialize
+//    // note that AUDCLNT_STREAMFLAGS_LOOPBACK and AUDCLNT_STREAMFLAGS_EVENTCALLBACK
+//    // do not work together...
+//    // the "data ready" event never gets set
+//    // so we're going to do a timer-driven loop
+//    hr = pAudioClient->Initialize(
+//        AUDCLNT_SHAREMODE_SHARED,
+//        AUDCLNT_STREAMFLAGS_LOOPBACK,
+//        0, 0, pwfx, 0
+//    );
+//    if (FAILED(hr)) 
+//	{
+//        printf("IAudioClient::Initialize failed: hr = 0x%08x\n", hr);
+//        CloseHandle(hWakeUp);
+//        pAudioClient->Release();
+//        return hr;
+//    }
+//    CoTaskMemFree(pwfx);
+//
+//    // activate an IAudioCaptureClient
+//    IAudioCaptureClient *pAudioCaptureClient;
+//    hr = pAudioClient->GetService(
+//        __uuidof(IAudioCaptureClient),
+//        (void**)&pAudioCaptureClient
+//    );
+//    if (FAILED(hr)) 
+//	{
+//        printf("IAudioClient::GetService(IAudioCaptureClient) failed: hr 0x%08x\n", hr);
+//        CloseHandle(hWakeUp);
+//        pAudioClient->Release();
+//        return hr;
+//    }
+//    
+//    // register with MMCSS
+//    DWORD nTaskIndex = 0;
+//    HANDLE hTask = AvSetMmThreadCharacteristics(L"Capture", &nTaskIndex);
+//    if (NULL == hTask) 
+//	{
+//        DWORD dwErr = GetLastError();
+//        printf("AvSetMmThreadCharacteristics failed: last error = %u\n", dwErr);
+//        pAudioCaptureClient->Release();
+//        CloseHandle(hWakeUp);
+//        pAudioClient->Release();
+//        return HRESULT_FROM_WIN32(dwErr);
+//    }    
+//
+//    // set the waitable timer
+//    LARGE_INTEGER liFirstFire;
+//    liFirstFire.QuadPart = -hnsDefaultDevicePeriod / 2; // negative means relative time
+//    LONG lTimeBetweenFires = (LONG)hnsDefaultDevicePeriod / 2 / (10 * 1000); // convert to milliseconds
+//    BOOL bOK = SetWaitableTimer(
+//        hWakeUp,
+//        &liFirstFire,
+//        lTimeBetweenFires,
+//        NULL, NULL, FALSE
+//    );
+//    if (!bOK) 
+//	{
+//        DWORD dwErr = GetLastError();
+//        printf("SetWaitableTimer failed: last error = %u\n", dwErr);
+//        AvRevertMmThreadCharacteristics(hTask);
+//        pAudioCaptureClient->Release();
+//        CloseHandle(hWakeUp);
+//        pAudioClient->Release();
+//        return HRESULT_FROM_WIN32(dwErr);
+//    }
+//    
+//    // call IAudioClient::Start
+//    hr = pAudioClient->Start();
+//    if (FAILED(hr))
+//	{
+//        printf("IAudioClient::Start failed: hr = 0x%08x\n", hr);
+//        AvRevertMmThreadCharacteristics(hTask);
+//        pAudioCaptureClient->Release();
+//        CloseHandle(hWakeUp);
+//        pAudioClient->Release();
+//        return hr;
+//    }
+//    SetEvent(hStartedEvent);
+//    
+//    // loopback capture loop
+//    HANDLE waitArray[2] = { hStopEvent, hWakeUp };
+//    DWORD dwWaitResult;
+//
+//    bool bDone = false;
+//    bool bFirstPacket = true;
+//
+//	
+//
+//    for ( uint32_t passes = 0; !bDone; ++passes ) 
+//	{
+//        dwWaitResult = WaitForMultipleObjects(
+//            ARRAYSIZE(waitArray), waitArray,
+//            FALSE, INFINITE
+//        );
+//
+//        if (WAIT_OBJECT_0 == dwWaitResult) 
+//		{
+//            printf("Received stop event after %u passes and %u frames\n", passes, *pnFrames);
+//            bDone = true;
+//            continue; // exits loop
+//        }
+//
+//        if (WAIT_OBJECT_0 + 1 != dwWaitResult)
+//		{
+//            printf("Unexpected WaitForMultipleObjects return value %u on pass %u after %u frames\n", dwWaitResult, passes, *pnFrames);
+//            pAudioClient->Stop();
+//            CancelWaitableTimer(hWakeUp);
+//            AvRevertMmThreadCharacteristics(hTask);
+//            pAudioCaptureClient->Release();
+//            CloseHandle(hWakeUp);
+//            pAudioClient->Release();
+//            return E_UNEXPECTED;
+//        }
+//
+//        // got a "wake up" event - see if there's data
+//        UINT32 nNextPacketSize;
+//        hr = pAudioCaptureClient->GetNextPacketSize(&nNextPacketSize);
+//        if (FAILED(hr)) 
+//		{
+//            printf("IAudioCaptureClient::GetNextPacketSize failed on pass %u after %u frames: hr = 0x%08x\n", passes, *pnFrames, hr);
+//            pAudioClient->Stop();
+//            CancelWaitableTimer(hWakeUp);
+//            AvRevertMmThreadCharacteristics(hTask);
+//            pAudioCaptureClient->Release();
+//            CloseHandle(hWakeUp);
+//            pAudioClient->Release();            
+//            return hr;
+//        }
+//
+//        if (0 == nNextPacketSize) 
+//		{
+//            // no data yet
+//            continue;
+//        }
+//
+//        // get the captured data
+//        BYTE *pData;
+//        UINT32 nNumFramesToRead;
+//        DWORD dwFlags;
+//
+//        hr = pAudioCaptureClient->GetBuffer(
+//            &pData,
+//            &nNumFramesToRead,
+//            &dwFlags,
+//            NULL,
+//            NULL
+//        );
+//        if (FAILED(hr)) 
+//		{
+//            printf("IAudioCaptureClient::GetBuffer failed on pass %u after %u frames: hr = 0x%08x\n", passes, *pnFrames, hr);
+//            pAudioClient->Stop();
+//            CancelWaitableTimer(hWakeUp);
+//            AvRevertMmThreadCharacteristics(hTask);
+//            pAudioCaptureClient->Release();
+//            CloseHandle(hWakeUp);
+//            pAudioClient->Release();            
+//            return hr;            
+//        }
+//
+//		//if (bFirstPacket && AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY == dwFlags) 
+//        if (AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY == dwFlags) 
+//		{
+//            printf("Probably spurious glitch reported on first packet\n");
+//        } 
+//		else if (0 != dwFlags) 
+//		{
+//            printf("IAudioCaptureClient::GetBuffer set flags to 0x%08x on pass %u after %u frames\n", dwFlags, passes, *pnFrames);
+//            pAudioClient->Stop();
+//            CancelWaitableTimer(hWakeUp);
+//            AvRevertMmThreadCharacteristics(hTask);
+//            pAudioCaptureClient->Release();
+//            CloseHandle(hWakeUp);
+//            pAudioClient->Release();            
+//            return E_UNEXPECTED;
+//        }
+//
+//        if (0 == nNumFramesToRead) 
+//		{
+//            printf("IAudioCaptureClient::GetBuffer said to read 0 frames on pass %u after %u frames\n", passes, *pnFrames);
+//            pAudioClient->Stop();
+//            CancelWaitableTimer(hWakeUp);
+//            AvRevertMmThreadCharacteristics(hTask);
+//            pAudioCaptureClient->Release();
+//            CloseHandle(hWakeUp);
+//            pAudioClient->Release();            
+//            return E_UNEXPECTED;            
+//        }
+//
+//        LONG lBytesToWrite = nNumFramesToRead * nBlockAlign;
+//#pragma prefast(suppress: __WARNING_INCORRECT_ANNOTATION, "IAudioCaptureClient::GetBuffer SAL annotation implies a 1-byte buffer")
+//        LONG lBytesWritten = mmioWrite(file_handle_, reinterpret_cast<PCHAR>(pData), lBytesToWrite);
+//        if (lBytesToWrite != lBytesWritten) 
+//		{
+//            printf("mmioWrite wrote %u bytes on pass %u after %u frames: expected %u bytes\n", lBytesWritten, passes, *pnFrames, lBytesToWrite);
+//            pAudioClient->Stop();
+//            CancelWaitableTimer(hWakeUp);
+//            AvRevertMmThreadCharacteristics(hTask);
+//            pAudioCaptureClient->Release();
+//            CloseHandle(hWakeUp);
+//            pAudioClient->Release();            
+//            return E_UNEXPECTED;
+//        }
+//        *pnFrames += nNumFramesToRead;
+//        
+//        hr = pAudioCaptureClient->ReleaseBuffer(nNumFramesToRead);
+//        if (FAILED(hr)) 
+//		{
+//            printf("IAudioCaptureClient::ReleaseBuffer failed on pass %u after %u frames: hr = 0x%08x\n", passes, *pnFrames, hr);
+//            pAudioClient->Stop();
+//            CancelWaitableTimer(hWakeUp);
+//            AvRevertMmThreadCharacteristics(hTask);
+//            pAudioCaptureClient->Release();
+//            CloseHandle(hWakeUp);
+//            pAudioClient->Release();            
+//            return hr;            
+//        }
+//        
+//        bFirstPacket = false;
+//    } // capture loop
+//
+//    hr = FinishWaveFile(file_handle_, &ckData, &ckRIFF);
+//    if (FAILED(hr)) 
+//	{
+//        // FinishWaveFile does it's own logging
+//        pAudioClient->Stop();
+//        CancelWaitableTimer(hWakeUp);
+//        AvRevertMmThreadCharacteristics(hTask);
+//        pAudioCaptureClient->Release();
+//        CloseHandle(hWakeUp);
+//        pAudioClient->Release();
+//        return hr;
+//    }
+//    
+//    pAudioClient->Stop();
+//    CancelWaitableTimer(hWakeUp);
+//    AvRevertMmThreadCharacteristics(hTask);
+//    pAudioCaptureClient->Release();
+//    CloseHandle(hWakeUp);
+//    pAudioClient->Release();
+//
+//    return hr;
+//}
+//
+//
+//
+//DWORD WINAPI LoopbackCaptureThreadFunction(LPVOID pContext) 
+//{
+//    LoopbackCaptureThreadFunctionArguments *pArgs = (LoopbackCaptureThreadFunctionArguments*)pContext;
+//
+//    pArgs->hr = CoInitialize(NULL);
+//    if (FAILED(pArgs->hr)) 
+//	{
+//        printf("CoInitialize failed: hr = 0x%08x\n", pArgs->hr);
+//        return 0;
+//    }
+//
+//    pArgs->hr = LoopbackCapture(
+//        pArgs->mm_device_,
+//        pArgs->file_handle_,
+//        pArgs->bInt16,
+//        pArgs->hStartedEvent,
+//        pArgs->hStopEvent,
+//        &pArgs->nFrames
+//    );
+//
+//    CoUninitialize();
+//    return 0;
+//}
 
 
 
@@ -526,38 +531,34 @@ DWORD WINAPI LoopbackCaptureThreadFunction(LPVOID pContext)
 
 struct LoopbackCaptureClass			//TODO: rename
 {
-	IMMDevice *pMMDevice;
-	bool bInt16;
-	HMMIO hFile;
-	HANDLE hStartedEvent;
-	HANDLE hStopEvent;
-	UINT32 nFrames;
-	HRESULT hr;
+	IMMDevice* mm_device_;
+	bool is_int16;
+	HMMIO file_handle_;
+	//HANDLE hStartedEvent;
+	//HANDLE hStopEvent;
+	//UINT32 frames_;
+	uint32_t frames_;
+	//HRESULT hr;
+
+	bool done_;// = false;
 
 
-	//   pArgs->hr = LoopbackCapture(
-	//       pArgs->pMMDevice,
-	//       pArgs->hFile,
-	//       pArgs->bInt16,
-	//       pArgs->hStartedEvent,
-	//       pArgs->hStopEvent,
-	//       &pArgs->nFrames
-	//   );
+	LoopbackCaptureClass()
+		: done_(false)
+	{}
 
-	//HRESULT LoopbackCapture(
-	//	IMMDevice *pMMDevice,
-	//	HMMIO hFile,
-	//	bool bInt16,
-	//	HANDLE hStartedEvent,
-	//	HANDLE hStopEvent,
-	//	PUINT32 pnFrames
-	//)
-
+	void stop()
+	{
+		done_ = true;
+	}
 
 
 
 	void operator()()
 	{
+		HRESULT hr;
+
+		//TODO: ver por que es necesario !!!
 		hr = CoInitialize(NULL);
 		if ( FAILED(hr) )
 		{
@@ -568,19 +569,16 @@ struct LoopbackCaptureClass			//TODO: rename
 
 		do_work();
 
-		CoUninitialize();
+		CoUninitialize();	//TODO: usar RAII
 	}
 
 	void do_work()
 	{
-		//TODO:
-		PUINT32 pnFrames = &nFrames;
-
 		HRESULT hr;
 
 		// activate an IAudioClient
 		IAudioClient *pAudioClient;
-		hr = pMMDevice->Activate(
+		hr = mm_device_->Activate(
 			__uuidof(IAudioClient),
 			CLSCTX_ALL, NULL,
 			(void**)&pAudioClient
@@ -594,8 +592,13 @@ struct LoopbackCaptureClass			//TODO: rename
 		}
 
 		// get the default device periodicity
-		REFERENCE_TIME hnsDefaultDevicePeriod;
-		hr = pAudioClient->GetDevicePeriod(&hnsDefaultDevicePeriod, NULL);
+		REFERENCE_TIME hnsDefaultDevicePeriod;		//__int64
+		hr = pAudioClient->GetDevicePeriod(&hnsDefaultDevicePeriod, NULL);			// The time is expressed in 100-nanosecond units ( 1 millisecond = 1 000 000 nanoseconds )
+
+		auto audio_client_releaser = finally (
+			[&]{ pAudioClient->Release(); }
+		);
+
 		if (FAILED(hr)) 
 		{
 			printf("IAudioClient::GetDevicePeriod failed: hr = 0x%08x\n", hr);
@@ -616,7 +619,7 @@ struct LoopbackCaptureClass			//TODO: rename
 			return;
 		}
 
-		if (bInt16)
+		if (is_int16)
 		{
 			// coerce int-16 wave format
 			// can do this in-place since we're not changing the size of the format
@@ -664,7 +667,7 @@ struct LoopbackCaptureClass			//TODO: rename
 
 		MMCKINFO ckRIFF = {0};
 		MMCKINFO ckData = {0};
-		hr = WriteWaveHeader(hFile, pwfx, &ckRIFF, &ckData);
+		hr = WriteWaveHeader(file_handle_, pwfx, &ckRIFF, &ckData);
 		if (FAILED(hr)) 
 		{
 			// WriteWaveHeader does its own logging
@@ -674,20 +677,20 @@ struct LoopbackCaptureClass			//TODO: rename
 			return;
 		}
 
-		// create a periodic waitable timer
-		HANDLE hWakeUp = CreateWaitableTimer(NULL, FALSE, NULL);
-		if (NULL == hWakeUp) 
-		{
-			DWORD dwErr = GetLastError();
-			printf("CreateWaitableTimer failed: last error = %u\n", dwErr);
-			CoTaskMemFree(pwfx);
-			pAudioClient->Release();
-			//return HRESULT_FROM_WIN32(dwErr);
-			return;
-		}
+		//// create a periodic waitable timer
+		//HANDLE hWakeUp = CreateWaitableTimer(NULL, FALSE, NULL);
+		//if (NULL == hWakeUp) 
+		//{
+		//	DWORD dwErr = GetLastError();
+		//	printf("CreateWaitableTimer failed: last error = %u\n", dwErr);
+		//	CoTaskMemFree(pwfx);
+		//	pAudioClient->Release();
+		//	//return HRESULT_FROM_WIN32(dwErr);
+		//	return;
+		//}
 
 		UINT32 nBlockAlign = pwfx->nBlockAlign;
-		*pnFrames = 0;
+		frames_ = 0;
 
 		// call IAudioClient::Initialize
 		// note that AUDCLNT_STREAMFLAGS_LOOPBACK and AUDCLNT_STREAMFLAGS_EVENTCALLBACK
@@ -702,7 +705,7 @@ struct LoopbackCaptureClass			//TODO: rename
 		if (FAILED(hr)) 
 		{
 			printf("IAudioClient::Initialize failed: hr = 0x%08x\n", hr);
-			CloseHandle(hWakeUp);
+			//CloseHandle(hWakeUp);
 			pAudioClient->Release();
 			//return hr;
 			return;
@@ -718,7 +721,7 @@ struct LoopbackCaptureClass			//TODO: rename
 		if (FAILED(hr)) 
 		{
 			printf("IAudioClient::GetService(IAudioCaptureClient) failed: hr 0x%08x\n", hr);
-			CloseHandle(hWakeUp);
+			//CloseHandle(hWakeUp);
 			pAudioClient->Release();
 			//return hr;
 			return;
@@ -732,33 +735,38 @@ struct LoopbackCaptureClass			//TODO: rename
 			DWORD dwErr = GetLastError();
 			printf("AvSetMmThreadCharacteristics failed: last error = %u\n", dwErr);
 			pAudioCaptureClient->Release();
-			CloseHandle(hWakeUp);
+			//CloseHandle(hWakeUp);
 			pAudioClient->Release();
 			//return HRESULT_FROM_WIN32(dwErr);
 			return;
 		}    
 
-		// set the waitable timer
-		LARGE_INTEGER liFirstFire;
-		liFirstFire.QuadPart = -hnsDefaultDevicePeriod / 2; // negative means relative time
-		LONG lTimeBetweenFires = (LONG)hnsDefaultDevicePeriod / 2 / (10 * 1000); // convert to milliseconds
-		BOOL bOK = SetWaitableTimer(
-			hWakeUp,
-			&liFirstFire,
-			lTimeBetweenFires,
-			NULL, NULL, FALSE
-			);
-		if (!bOK) 
-		{
-			DWORD dwErr = GetLastError();
-			printf("SetWaitableTimer failed: last error = %u\n", dwErr);
-			AvRevertMmThreadCharacteristics(hTask);
-			pAudioCaptureClient->Release();
-			CloseHandle(hWakeUp);
-			pAudioClient->Release();
-			//return HRESULT_FROM_WIN32(dwErr);
-			return;
-		}
+
+		// The time is expressed in 100-nanosecond units ( 1 millisecond = 1 000 000 nanoseconds )
+		//// set the waitable timer
+		//LARGE_INTEGER liFirstFire;
+		//liFirstFire.QuadPart = -hnsDefaultDevicePeriod / 2;						// negative means relative time
+		//LONG lTimeBetweenFires = (LONG)hnsDefaultDevicePeriod / 2 / (10 * 1000); // convert to milliseconds
+
+
+
+		//BOOL bOK = SetWaitableTimer(
+		//	hWakeUp,
+		//	&liFirstFire,
+		//	lTimeBetweenFires,
+		//	NULL, NULL, FALSE
+		//	);
+		//if (!bOK) 
+		//{
+		//	DWORD dwErr = GetLastError();
+		//	printf("SetWaitableTimer failed: last error = %u\n", dwErr);
+		//	AvRevertMmThreadCharacteristics(hTask);
+		//	pAudioCaptureClient->Release();
+		//	CloseHandle(hWakeUp);
+		//	pAudioClient->Release();
+		//	//return HRESULT_FROM_WIN32(dwErr);
+		//	return;
+		//}
 
 		// call IAudioClient::Start
 		hr = pAudioClient->Start();
@@ -767,57 +775,65 @@ struct LoopbackCaptureClass			//TODO: rename
 			printf("IAudioClient::Start failed: hr = 0x%08x\n", hr);
 			AvRevertMmThreadCharacteristics(hTask);
 			pAudioCaptureClient->Release();
-			CloseHandle(hWakeUp);
+			//CloseHandle(hWakeUp);
 			pAudioClient->Release();
 			//return hr;
 			return;
 		}
-		SetEvent(hStartedEvent);
+		//SetEvent(hStartedEvent);
 
-		// loopback capture loop
-		HANDLE waitArray[2] = { hStopEvent, hWakeUp };
-		DWORD dwWaitResult;
+		//// loopback capture loop
+		//HANDLE waitArray[2] = { hStopEvent, hWakeUp };
+		//DWORD dwWaitResult;
 
-		bool bDone = false;
+		//bool bDone = false;
 		bool bFirstPacket = true;
-		for (UINT32 nPasses = 0; !bDone; nPasses++) 
+		for ( uint32_t passes = 0; !done_; ++passes ) 
 		{
-			dwWaitResult = WaitForMultipleObjects(
-				ARRAYSIZE(waitArray), waitArray,
-				FALSE, INFINITE
-				);
+			//dwWaitResult = WaitForMultipleObjects(
+			//	ARRAYSIZE(waitArray), waitArray,
+			//	FALSE, INFINITE
+			//	);
 
-			if (WAIT_OBJECT_0 == dwWaitResult) 
-			{
-				printf("Received stop event after %u passes and %u frames\n", nPasses, *pnFrames);
-				bDone = true;
-				continue; // exits loop
-			}
+			//if (WAIT_OBJECT_0 == dwWaitResult) 
+			//{
+			//	printf("Received stop event after %u passes and %u frames\n", passes, frames_);
+			//	bDone = true;
+			//	continue; // exits loop
+			//}
 
-			if (WAIT_OBJECT_0 + 1 != dwWaitResult)
-			{
-				printf("Unexpected WaitForMultipleObjects return value %u on pass %u after %u frames\n", dwWaitResult, nPasses, *pnFrames);
-				pAudioClient->Stop();
-				CancelWaitableTimer(hWakeUp);
-				AvRevertMmThreadCharacteristics(hTask);
-				pAudioCaptureClient->Release();
-				CloseHandle(hWakeUp);
-				pAudioClient->Release();
-				//return E_UNEXPECTED;
-				return;
-			}
+			//if (WAIT_OBJECT_0 + 1 != dwWaitResult)
+			//{
+			//	printf("Unexpected WaitForMultipleObjects return value %u on pass %u after %u frames\n", dwWaitResult, passes, frames_);
+			//	pAudioClient->Stop();
+			//	CancelWaitableTimer(hWakeUp);
+			//	AvRevertMmThreadCharacteristics(hTask);
+			//	pAudioCaptureClient->Release();
+			//	CloseHandle(hWakeUp);
+			//	pAudioClient->Release();
+			//	//return E_UNEXPECTED;
+			//	return;
+			//}
+
+			
+			//TODO: wake up win api o Sleep... es lo mismo???
+			//std::this_thread::sleep_for( std::chrono::milliseconds(500) );
+			//std::this_thread::sleep_for( std::chrono::nanoseconds(hnsDefaultDevicePeriod / 2) );
+			auto millic = (LONG)hnsDefaultDevicePeriod / 2 / (10 * 1000);
+			std::this_thread::sleep_for( std::chrono::milliseconds(millic) );
+
 
 			// got a "wake up" event - see if there's data
 			UINT32 nNextPacketSize;
 			hr = pAudioCaptureClient->GetNextPacketSize(&nNextPacketSize);
 			if (FAILED(hr)) 
 			{
-				printf("IAudioCaptureClient::GetNextPacketSize failed on pass %u after %u frames: hr = 0x%08x\n", nPasses, *pnFrames, hr);
+				printf("IAudioCaptureClient::GetNextPacketSize failed on pass %u after %u frames: hr = 0x%08x\n", passes, frames_, hr);
 				pAudioClient->Stop();
-				CancelWaitableTimer(hWakeUp);
+				//CancelWaitableTimer(hWakeUp);
 				AvRevertMmThreadCharacteristics(hTask);
 				pAudioCaptureClient->Release();
-				CloseHandle(hWakeUp);
+				//CloseHandle(hWakeUp);
 				pAudioClient->Release();            
 				//return hr;
 				return;
@@ -843,12 +859,12 @@ struct LoopbackCaptureClass			//TODO: rename
 				);
 			if (FAILED(hr)) 
 			{
-				printf("IAudioCaptureClient::GetBuffer failed on pass %u after %u frames: hr = 0x%08x\n", nPasses, *pnFrames, hr);
+				printf("IAudioCaptureClient::GetBuffer failed on pass %u after %u frames: hr = 0x%08x\n", passes, frames_, hr);
 				pAudioClient->Stop();
-				CancelWaitableTimer(hWakeUp);
+				//CancelWaitableTimer(hWakeUp);
 				AvRevertMmThreadCharacteristics(hTask);
 				pAudioCaptureClient->Release();
-				CloseHandle(hWakeUp);
+				//CloseHandle(hWakeUp);
 				pAudioClient->Release();            
 				//return hr;            
 				return;
@@ -861,12 +877,12 @@ struct LoopbackCaptureClass			//TODO: rename
 			} 
 			else if (0 != dwFlags) 
 			{
-				printf("IAudioCaptureClient::GetBuffer set flags to 0x%08x on pass %u after %u frames\n", dwFlags, nPasses, *pnFrames);
+				printf("IAudioCaptureClient::GetBuffer set flags to 0x%08x on pass %u after %u frames\n", dwFlags, passes, frames_);
 				pAudioClient->Stop();
-				CancelWaitableTimer(hWakeUp);
+				//CancelWaitableTimer(hWakeUp);
 				AvRevertMmThreadCharacteristics(hTask);
 				pAudioCaptureClient->Release();
-				CloseHandle(hWakeUp);
+				//CloseHandle(hWakeUp);
 				pAudioClient->Release();            
 				//return E_UNEXPECTED;
 				return;
@@ -874,12 +890,12 @@ struct LoopbackCaptureClass			//TODO: rename
 
 			if (0 == nNumFramesToRead) 
 			{
-				printf("IAudioCaptureClient::GetBuffer said to read 0 frames on pass %u after %u frames\n", nPasses, *pnFrames);
+				printf("IAudioCaptureClient::GetBuffer said to read 0 frames on pass %u after %u frames\n", passes, frames_);
 				pAudioClient->Stop();
-				CancelWaitableTimer(hWakeUp);
+				//CancelWaitableTimer(hWakeUp);
 				AvRevertMmThreadCharacteristics(hTask);
 				pAudioCaptureClient->Release();
-				CloseHandle(hWakeUp);
+				//CloseHandle(hWakeUp);
 				pAudioClient->Release();            
 				//return E_UNEXPECTED;
 				return;
@@ -887,30 +903,30 @@ struct LoopbackCaptureClass			//TODO: rename
 
 			LONG lBytesToWrite = nNumFramesToRead * nBlockAlign;
 #pragma prefast(suppress: __WARNING_INCORRECT_ANNOTATION, "IAudioCaptureClient::GetBuffer SAL annotation implies a 1-byte buffer")
-			LONG lBytesWritten = mmioWrite(hFile, reinterpret_cast<PCHAR>(pData), lBytesToWrite);
+			LONG lBytesWritten = mmioWrite(file_handle_, reinterpret_cast<PCHAR>(pData), lBytesToWrite);
 			if (lBytesToWrite != lBytesWritten) 
 			{
-				printf("mmioWrite wrote %u bytes on pass %u after %u frames: expected %u bytes\n", lBytesWritten, nPasses, *pnFrames, lBytesToWrite);
+				printf("mmioWrite wrote %u bytes on pass %u after %u frames: expected %u bytes\n", lBytesWritten, passes, frames_, lBytesToWrite);
 				pAudioClient->Stop();
-				CancelWaitableTimer(hWakeUp);
+				//CancelWaitableTimer(hWakeUp);
 				AvRevertMmThreadCharacteristics(hTask);
 				pAudioCaptureClient->Release();
-				CloseHandle(hWakeUp);
+				//CloseHandle(hWakeUp);
 				pAudioClient->Release();            
 				//return E_UNEXPECTED;
 				return;
 			}
-			*pnFrames += nNumFramesToRead;
+			frames_ += nNumFramesToRead;
 
 			hr = pAudioCaptureClient->ReleaseBuffer(nNumFramesToRead);
 			if (FAILED(hr)) 
 			{
-				printf("IAudioCaptureClient::ReleaseBuffer failed on pass %u after %u frames: hr = 0x%08x\n", nPasses, *pnFrames, hr);
+				printf("IAudioCaptureClient::ReleaseBuffer failed on pass %u after %u frames: hr = 0x%08x\n", passes, frames_, hr);
 				pAudioClient->Stop();
-				CancelWaitableTimer(hWakeUp);
+				//CancelWaitableTimer(hWakeUp);
 				AvRevertMmThreadCharacteristics(hTask);
 				pAudioCaptureClient->Release();
-				CloseHandle(hWakeUp);
+				//CloseHandle(hWakeUp);
 				pAudioClient->Release();            
 				//return hr;            
 				return;
@@ -919,25 +935,25 @@ struct LoopbackCaptureClass			//TODO: rename
 			bFirstPacket = false;
 		} // capture loop
 
-		hr = FinishWaveFile(hFile, &ckData, &ckRIFF);
+		hr = FinishWaveFile(file_handle_, &ckData, &ckRIFF);
 		if (FAILED(hr)) 
 		{
 			// FinishWaveFile does it's own logging
 			pAudioClient->Stop();
-			CancelWaitableTimer(hWakeUp);
+			//CancelWaitableTimer(hWakeUp);
 			AvRevertMmThreadCharacteristics(hTask);
 			pAudioCaptureClient->Release();
-			CloseHandle(hWakeUp);
+			//CloseHandle(hWakeUp);
 			pAudioClient->Release();
 			//return hr;
 			return;
 		}
 
 		pAudioClient->Stop();
-		CancelWaitableTimer(hWakeUp);
+		//CancelWaitableTimer(hWakeUp);
 		AvRevertMmThreadCharacteristics(hTask);
 		pAudioCaptureClient->Release();
-		CloseHandle(hWakeUp);
+		//CloseHandle(hWakeUp);
 		pAudioClient->Release();
 
 		//return hr;

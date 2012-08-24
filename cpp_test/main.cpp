@@ -74,38 +74,26 @@ int do_everything(int argc, LPCWSTR argv[])
 	//	return -__LINE__;
 	//}
 
-	HANDLE hThread;
+	//HANDLE hThread;
 
 
 	LoopbackCaptureClass lcc;
-	lcc.hr = E_UNEXPECTED; // thread will overwrite this
-	lcc.pMMDevice = prefs.m_pMMDevice;
-	lcc.bInt16 = prefs.m_bInt16;
-	lcc.hFile = prefs.m_hFile;
-	lcc.hStartedEvent = hStartedEvent;
-	lcc.hStopEvent = hStopEvent;
-	lcc.nFrames = 0;
+	//lcc.hr = E_UNEXPECTED; // thread will overwrite this
+	lcc.mm_device_ = prefs.m_pMMDevice;
+	lcc.is_int16 = prefs.m_bInt16;
+	lcc.file_handle_ = prefs.m_hFile;
+	//lcc.hStartedEvent = hStartedEvent;
+	//lcc.hStopEvent = hStopEvent;
+	lcc.frames_ = 0;
 	
-	std::thread work_thread(lcc);
-
-
-	while(true)
-	{
-		std::cout << ".";
-		std::this_thread::sleep_for( std::chrono::milliseconds(1000) );
-	}
-
-
-	work_thread.join();
-
-
+	std::thread work_thread( std::ref(lcc) );
 
 	
 
 
 	//// wait for either capture to start or the thread to end
 	//HANDLE waitArray[2] = { hStartedEvent, hThread };
-	//DWORD dwWaitResult;
+	DWORD dwWaitResult;
 	//dwWaitResult = WaitForMultipleObjects(
 	//	ARRAYSIZE(waitArray), waitArray,
 	//	FALSE, INFINITE
@@ -119,7 +107,6 @@ int do_everything(int argc, LPCWSTR argv[])
 	//	CloseHandle(hStopEvent);
 	//	return -__LINE__;
 	//}
-
 	//if (WAIT_OBJECT_0 != dwWaitResult) 
 	//{
 	//	printf("Unexpected WaitForMultipleObjects return value %u", dwWaitResult);
@@ -131,39 +118,98 @@ int do_everything(int argc, LPCWSTR argv[])
 
 	//CloseHandle(hStartedEvent);
 
-	//HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
+	HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
 
-	//if (INVALID_HANDLE_VALUE == hStdIn) 
-	//{
-	//	printf("GetStdHandle returned INVALID_HANDLE_VALUE: last error is %u\n", GetLastError());
-	//	SetEvent(hStopEvent);
-	//	WaitForSingleObject(hThread, INFINITE);
-	//	CloseHandle(hStartedEvent);
-	//	CloseHandle(hThread);
-	//	CloseHandle(hStopEvent);
-	//	return -__LINE__;
-	//}
+	if (INVALID_HANDLE_VALUE == hStdIn) 
+	{
+		printf("GetStdHandle returned INVALID_HANDLE_VALUE: last error is %u\n", GetLastError());
+		
+		lcc.stop();
+		work_thread.join();			//TODO: RAII guard
 
-	//printf("Press Enter to quit...\n");
+		//SetEvent(hStopEvent);
+		//WaitForSingleObject(hThread, INFINITE);
+		CloseHandle(hStartedEvent);
+		//CloseHandle(hThread);
+		CloseHandle(hStopEvent);
+		return -__LINE__;
+	}
+
+	printf("Press Enter to quit...\n");		//TODO: c++
 
 	//// wait for the thread to terminate early
 	//// or for the user to press (and release) Enter
 	//HANDLE rhHandles[2] = { hThread, hStdIn };
 
-	//bool bKeepWaiting = true;
-	//while (bKeepWaiting) 
-	//{
+	bool bKeepWaiting = true;
+	while (bKeepWaiting) 
+	{
 
-	//	dwWaitResult = WaitForMultipleObjects(2, rhHandles, FALSE, INFINITE);
+		//dwWaitResult = WaitForMultipleObjects(2, rhHandles, FALSE, INFINITE);
+
+		dwWaitResult = WaitForSingleObject(hStdIn, INFINITE);
+
+		if ( dwWaitResult == WAIT_OBJECT_0 )
+		{
+			// see if any of them was an Enter key-up event
+			INPUT_RECORD rInput[128];
+			DWORD nEvents;
+			if ( !ReadConsoleInput(hStdIn, rInput, ARRAYSIZE(rInput), &nEvents) ) 
+			{
+				printf("ReadConsoleInput failed: last error is %u\n", GetLastError());
+				
+				lcc.stop();
+				work_thread.join();	//TODO: RAII guard
+
+				//SetEvent(hStopEvent);
+				//WaitForSingleObject(hThread, INFINITE);
+				
+				bKeepWaiting = false;
+			} 
+			else 
+			{
+				for (DWORD i = 0; i < nEvents; i++) 
+				{
+					if (
+						KEY_EVENT == rInput[i].EventType &&
+						VK_RETURN == rInput[i].Event.KeyEvent.wVirtualKeyCode &&
+						!rInput[i].Event.KeyEvent.bKeyDown
+						) 
+					{
+						printf("Stopping capture...\n");
+						//SetEvent(hStopEvent);
+						//WaitForSingleObject(hThread, INFINITE);
+
+						lcc.stop();
+						work_thread.join();	//TODO: RAII guard
+
+						bKeepWaiting = false;
+						break;
+					}
+				}
+				// if none of them were Enter key-up events,
+				// continue waiting
+			}
+		}
+		else
+		{
+			printf("WaitForSingleObject returned unexpected value 0x%08x\n", dwWaitResult);
+			//SetEvent(hStopEvent);
+			//WaitForSingleObject(hThread, INFINITE);
+
+			lcc.stop();
+			work_thread.join();	//TODO: RAII guard
+
+			bKeepWaiting = false;
+			break;		
+		}
 
 	//	switch (dwWaitResult) 
 	//	{
-
 	//	case WAIT_OBJECT_0: // hThread
 	//		printf("The thread terminated early - something bad happened\n");
 	//		bKeepWaiting = false;
 	//		break;
-
 	//	case WAIT_OBJECT_0 + 1: // hStdIn
 	//		// see if any of them was an Enter key-up event
 	//		INPUT_RECORD rInput[128];
@@ -196,7 +242,6 @@ int do_everything(int argc, LPCWSTR argv[])
 	//			// continue waiting
 	//		}
 	//		break;
-
 	//	default:
 	//		printf("WaitForMultipleObjects returned unexpected value 0x%08x\n", dwWaitResult);
 	//		SetEvent(hStopEvent);
@@ -204,7 +249,7 @@ int do_everything(int argc, LPCWSTR argv[])
 	//		bKeepWaiting = false;
 	//		break;
 	//	}
-	//}
+	}
 
 /*	DWORD exitCode;
 	if (!GetExitCodeThread(hThread, &exitCode))
@@ -273,24 +318,14 @@ int do_everything(int argc, LPCWSTR argv[])
 	}
 
 	// write the correct data to the fact chunk
-	//LONG lBytesWritten = mmioWrite(
-	//	prefs.m_hFile,
-	//	reinterpret_cast<PCHAR>(&threadArgs.nFrames),
-	//	sizeof(threadArgs.nFrames)
-	//	);
-	//if (lBytesWritten != sizeof(threadArgs.nFrames)) 
-	//{
-	//	printf("Updating the fact chunk wrote %u bytes; expected %u\n", lBytesWritten, (UINT32)sizeof(threadArgs.nFrames));
-	//	return -__LINE__;
-	//}
 	LONG lBytesWritten = mmioWrite(
 		prefs.m_hFile,
-		reinterpret_cast<PCHAR>(&lcc.nFrames),
-		sizeof(lcc.nFrames)
+		reinterpret_cast<PCHAR>(&lcc.frames_),
+		sizeof(lcc.frames_)
 		);
-	if (lBytesWritten != sizeof(lcc.nFrames)) 
+	if (lBytesWritten != sizeof(lcc.frames_)) 
 	{
-		printf("Updating the fact chunk wrote %u bytes; expected %u\n", lBytesWritten, (UINT32)sizeof(lcc.nFrames));
+		printf("Updating the fact chunk wrote %u bytes; expected %u\n", lBytesWritten, (UINT32)sizeof(lcc.frames_));
 		return -__LINE__;
 	}
 
@@ -307,10 +342,19 @@ int do_everything(int argc, LPCWSTR argv[])
 	return 0;
 }
 
-
+#include "generic_guard.hpp"
 
 int _cdecl wmain(int argc, LPCWSTR argv[]) 
 {
+	//{
+	//	auto my_guard = finally (
+	//		[]{ std::cout << "world" << std::endl; }
+	//	);
+
+	//	std::cout << "hello ";
+
+	//}
+
 	//HRESULT hr = S_OK;
 	//hr = CoInitialize(NULL);
 	//if (FAILED(hr)) 
