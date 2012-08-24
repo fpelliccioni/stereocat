@@ -80,7 +80,7 @@ int do_everything(int argc, LPCWSTR argv[])
 	LoopbackCaptureClass lcc;
 	//lcc.hr = E_UNEXPECTED; // thread will overwrite this
 	lcc.mm_device_ = prefs.m_pMMDevice;
-	lcc.is_int16 = prefs.m_bInt16;
+	lcc.is_int16_ = prefs.m_bInt16;
 	lcc.file_handle_ = prefs.m_hFile;
 	//lcc.hStartedEvent = hStartedEvent;
 	//lcc.hStopEvent = hStopEvent;
